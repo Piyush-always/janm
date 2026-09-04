@@ -181,8 +181,18 @@ function send(m,d){
 // One message per edge -- on press and on release, no repeated stream. This
 // also means independent buttons (e.g. motor 1 + motor 2 together) no
 // longer share any timer state and can't interfere with each other.
-function start(m,d){log('M'+m+' '+d+' pressed'); send(m,d);}
-function stop(m,d){log('M'+m+' '+d+' released'); send(m,'stop');}
+var pressedState={};
+function start(m,d){
+  var opp = d==='fwd' ? 'rev' : 'fwd';
+  if (pressedState[m+'-'+opp]) stop(m,opp); // same-motor interlock: release the opposite direction first
+  pressedState[m+'-'+d]=true;
+  log('M'+m+' '+d+' pressed'); send(m,d);
+}
+function stop(m,d){
+  if (!pressedState[m+'-'+d]) return;
+  pressedState[m+'-'+d]=false;
+  log('M'+m+' '+d+' released'); send(m,'stop');
+}
 document.querySelectorAll('button').forEach(function(b){
   var m=b.dataset.m, d=b.dataset.d;
   b.addEventListener('mousedown', e=>{e.preventDefault();start(m,d);});

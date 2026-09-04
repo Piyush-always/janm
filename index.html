@@ -6,10 +6,10 @@
   <title>Janmashtami Jhula Control</title>
   <style>
     :root {
-      --bg-color: #0b1b3a; --card-bg: #12244d; --accent-primary: #d4af37;
-      --text-main: #f4f1e8; --text-dim: #93a3c9; --btn-bg: #1a2f5c;
-      --success: #22c55e; --danger: #ef4444;
-      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+      --bg-color: #f4f1e8; --card-bg: #ffffff; --accent-primary: #b8860b;
+      --text-main: #1f2430; --text-dim: #6b7280; --btn-bg: #f0f2f7;
+      --btn-border: #dde2ec; --row-bg: #f8fafc; --success: #16a34a; --danger: #dc2626;
+      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.06), 0 2px 4px -2px rgb(0 0 0 / 0.06);
     }
     * { box-sizing: border-box; }
     body {
@@ -21,9 +21,9 @@
     .container {
       width: 100%; max-width: 420px; padding: 32px 24px;
       background: var(--card-bg); border-radius: 32px;
-      box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.2);
+      box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.08);
       display: flex; flex-direction: column; gap: 24px; height: fit-content;
-      border: 1px solid rgba(212,175,55,0.25);
+      border: 1px solid rgba(184,134,11,0.2);
     }
     h1 { font-size: 1.25rem; font-weight: 600; text-align: center; margin: 0; color: var(--accent-primary); }
     #connection-status {
@@ -37,11 +37,11 @@
       letter-spacing: 0.08em; color: var(--text-dim); margin-bottom: 8px;
     }
     .device-row {
-      display: flex; align-items: center; gap: 10px; background: #0e1d40;
-      border: 1px solid #24356b; border-radius: 12px; padding: 10px 14px; transition: border-color 0.3s;
+      display: flex; align-items: center; gap: 10px; background: var(--row-bg);
+      border: 1px solid var(--btn-border); border-radius: 12px; padding: 10px 14px; transition: border-color 0.3s;
     }
     .device-row.online { border-color: var(--success); }
-    .device-dot { width: 8px; height: 8px; border-radius: 50%; background: #3a4a7a; flex-shrink: 0; transition: all 0.3s; }
+    .device-dot { width: 8px; height: 8px; border-radius: 50%; background: #c3c9d4; flex-shrink: 0; transition: all 0.3s; }
     .device-row.online .device-dot { background: var(--success); box-shadow: 0 0 6px var(--success); }
     .device-name { font-size: 0.82rem; font-weight: 600; flex: 1; }
     .device-note { font-size: 0.7rem; color: var(--text-dim); }
@@ -50,7 +50,7 @@
     .motor-col { display: flex; flex-direction: column; align-items: center; gap: 10px; }
     .motor-col .section-label { margin-bottom: 0; }
     button {
-      width: 92px; height: 80px; border-radius: 20px; border: 1px solid #24356b;
+      width: 92px; height: 80px; border-radius: 20px; border: 1px solid var(--btn-border);
       background: var(--btn-bg); color: var(--text-main); font-size: 20px; cursor: pointer;
       transition: all 0.1s ease; display: flex; flex-direction: column;
       justify-content: center; align-items: center; gap: 4px;
@@ -58,23 +58,23 @@
     }
     button .lbl { font-size: 0.55rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); }
     button:active, button.is-pressed {
-      background: var(--accent-primary); color: #0b1b3a; border-color: var(--accent-primary);
-      transform: scale(0.94); box-shadow: 0 0 15px rgba(212,175,55,0.4);
+      background: var(--accent-primary); color: #fffaf0; border-color: var(--accent-primary);
+      transform: scale(0.94); box-shadow: 0 0 15px rgba(184,134,11,0.35);
     }
-    button:active .lbl, button.is-pressed .lbl { color: rgba(11,27,58,0.7); }
-    button:disabled { opacity: 0.35; cursor: not-allowed; }
+    button:active .lbl, button.is-pressed .lbl { color: rgba(255,250,240,0.85); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
 
     .log-area {
-      background: #0e1d40; border: 1px solid #24356b; border-radius: 16px;
+      background: var(--row-bg); border: 1px solid var(--btn-border); border-radius: 16px;
       padding: 14px 16px; height: 120px; overflow-y: auto;
       font-family: ui-monospace, SFMono-Regular, monospace; font-size: 0.72rem;
     }
     .log-area::-webkit-scrollbar { width: 4px; }
-    .log-area::-webkit-scrollbar-thumb { background: #3a4a7a; border-radius: 10px; }
-    .log-entry { display: flex; gap: 8px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .log-area::-webkit-scrollbar-thumb { background: #c3c9d4; border-radius: 10px; }
+    .log-entry { display: flex; gap: 8px; padding: 2px 0; border-bottom: 1px solid rgba(0,0,0,0.05); }
     .log-time  { color: var(--text-dim); flex-shrink: 0; }
     .msg-sys { color: var(--text-dim); }
-    .local-link { text-align: center; font-size: 0.75rem; }
+    .local-link { text-align: center; font-size: 0.75rem; color: var(--text-dim); }
     .local-link a { color: var(--accent-primary); }
   </style>
 </head>
@@ -207,8 +207,14 @@
     });
   }
 
+  // Same-motor UP/DOWN are mutually exclusive (0<->1 is motor 1, 2<->3 is
+  // motor 2) -- pressing one releases the other first. Different motors
+  // (e.g. motor 1 up + motor 2 down) are independent and can run together.
+  const OPPOSITE = {0:1, 1:0, 2:3, 3:2};
+
   function press(d) {
     if (pressedState[d]) return;
+    if (pressedState[OPPOSITE[d]]) release(OPPOSITE[d]);
     pressedState[d] = true;
     document.getElementById('btn-'+d)?.classList.add('is-pressed');
     addLog(DIR[d] + ' pressed');

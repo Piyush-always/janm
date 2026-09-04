@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Janmashtami Jhula Control</title>
+  <style>
+    :root {
+      --bg-color: #0b1b3a; --card-bg: #12244d; --accent-primary: #d4af37;
+      --text-main: #f4f1e8; --text-dim: #93a3c9; --btn-bg: #1a2f5c;
+      --success: #22c55e; --danger: #ef4444;
+      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, system-ui, sans-serif;
+      background-color: var(--bg-color); color: var(--text-main); margin: 0;
+      display: flex; justify-content: center; min-height: 100vh;
+      padding: 32px 16px; -webkit-tap-highlight-color: transparent;
+    }
+    .container {
+      width: 100%; max-width: 420px; padding: 32px 24px;
+      background: var(--card-bg); border-radius: 32px;
+      box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.2);
+      display: flex; flex-direction: column; gap: 24px; height: fit-content;
+      border: 1px solid rgba(212,175,55,0.25);
+    }
+    h1 { font-size: 1.25rem; font-weight: 600; text-align: center; margin: 0; color: var(--accent-primary); }
+    #connection-status {
+      display: flex; align-items: center; justify-content: center;
+      gap: 8px; font-size: 0.8rem; font-weight: 500; color: var(--text-dim);
+    }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }
+    .connected .status-dot { background: var(--success); box-shadow: 0 0 8px var(--success); }
+    .section-label {
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--text-dim); margin-bottom: 8px;
+    }
+    .device-row {
+      display: flex; align-items: center; gap: 10px; background: #0e1d40;
+      border: 1px solid #24356b; border-radius: 12px; padding: 10px 14px; transition: border-color 0.3s;
+    }
+    .device-row.online { border-color: var(--success); }
+    .device-dot { width: 8px; height: 8px; border-radius: 50%; background: #3a4a7a; flex-shrink: 0; transition: all 0.3s; }
+    .device-row.online .device-dot { background: var(--success); box-shadow: 0 0 6px var(--success); }
+    .device-name { font-size: 0.82rem; font-weight: 600; flex: 1; }
+    .device-note { font-size: 0.7rem; color: var(--text-dim); }
+
+    .motors { display: flex; gap: 16px; justify-content: center; }
+    .motor-col { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .motor-col .section-label { margin-bottom: 0; }
+    button {
+      width: 92px; height: 80px; border-radius: 20px; border: 1px solid #24356b;
+      background: var(--btn-bg); color: var(--text-main); font-size: 20px; cursor: pointer;
+      transition: all 0.1s ease; display: flex; flex-direction: column;
+      justify-content: center; align-items: center; gap: 4px;
+      box-shadow: var(--shadow); user-select: none;
+    }
+    button .lbl { font-size: 0.55rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); }
+    button:active, button.is-pressed {
+      background: var(--accent-primary); color: #0b1b3a; border-color: var(--accent-primary);
+      transform: scale(0.94); box-shadow: 0 0 15px rgba(212,175,55,0.4);
+    }
+    button:active .lbl, button.is-pressed .lbl { color: rgba(11,27,58,0.7); }
+    button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    .log-area {
+      background: #0e1d40; border: 1px solid #24356b; border-radius: 16px;
+      padding: 14px 16px; height: 120px; overflow-y: auto;
+      font-family: ui-monospace, SFMono-Regular, monospace; font-size: 0.72rem;
+    }
+    .log-area::-webkit-scrollbar { width: 4px; }
+    .log-area::-webkit-scrollbar-thumb { background: #3a4a7a; border-radius: 10px; }
+    .log-entry { display: flex; gap: 8px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .log-time  { color: var(--text-dim); flex-shrink: 0; }
+    .msg-sys { color: var(--text-dim); }
+    .local-link { text-align: center; font-size: 0.75rem; }
+    .local-link a { color: var(--accent-primary); }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>🪈 Janmashtami Jhula Control</h1>
+  <div id="connection-status" class="disconnected">
+    <div class="status-dot"></div>
+    <span id="status-text">Connecting...</span>
+  </div>
+
+  <div>
+    <div class="section-label">Device</div>
+    <div class="device-row" id="dev-jhula1">
+      <div class="device-dot"></div>
+      <div class="device-name">Jhula Receiver</div>
+      <div class="device-note" id="note-jhula1">Offline</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-label" style="text-align:center">Manual Control</div>
+    <div class="motors">
+      <div class="motor-col">
+        <div class="section-label">Motor 1</div>
+        <button id="btn-0" onmousedown="press(0)" onmouseup="release(0)" onmouseleave="release(0)" ontouchstart="press(0);return false" ontouchend="release(0)">↑<span class="lbl">Up</span></button>
+        <button id="btn-1" onmousedown="press(1)" onmouseup="release(1)" onmouseleave="release(1)" ontouchstart="press(1);return false" ontouchend="release(1)">↓<span class="lbl">Down</span></button>
+      </div>
+      <div class="motor-col">
+        <div class="section-label">Motor 2</div>
+        <button id="btn-2" onmousedown="press(2)" onmouseup="release(2)" onmouseleave="release(2)" ontouchstart="press(2);return false" ontouchend="release(2)">↑<span class="lbl">Up</span></button>
+        <button id="btn-3" onmousedown="press(3)" onmouseup="release(3)" onmouseleave="release(3)" ontouchstart="press(3);return false" ontouchend="release(3)">↓<span class="lbl">Down</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="local-link">
+    On the venue WiFi? Use <a href="http://jhula1.local/">jhula1.local</a> instead — direct link, lower latency, works without internet.
+  </div>
+
+  <div>
+    <div class="section-label">Live Log</div>
+    <div class="log-area" id="log"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script>
+  const DIR = {0:'M1 UP',1:'M1 DOWN',2:'M2 UP',3:'M2 DOWN'};
+
+  // ---- Fill these in from your MQTT broker console (e.g. HiveMQ Cloud) ----
+  const MQTT_WSS_URL = 'wss://46ae51f4f3d74f3ca138768beed1676d.s1.eu.hivemq.cloud:8884/mqtt';
+  const MQTT_USER = 'hivemq.webclient.1788493600372';
+  const MQTT_PASS = '.y;,qk<9578EoAHjCpBD';
+  // ---------------------------------------------------------------------
+  // Security note: visible to anyone who views this page's source. If your
+  // broker supports per-user topic ACLs, create a low-privilege user
+  // restricted to the topics below rather than reusing the ESP32's own.
+
+  const CMD_TOPIC   = { 0: 'janmashtami/motor1/cmd', 1: 'janmashtami/motor1/cmd', 2: 'janmashtami/motor2/cmd', 3: 'janmashtami/motor2/cmd' };
+  const CMD_PAYLOAD = { 0: 'fwd', 1: 'rev', 2: 'fwd', 3: 'rev' };
+  const STATUS_TOPIC = 'janmashtami/jhula1/status';
+  // Must be well under the ESP32's CMD_TIMEOUT_MS (800ms) dead-man's switch.
+  const HEARTBEAT_MS = 250;
+
+  let client;
+  const pressedState = {};
+  let heartbeatTimer = null;
+
+  function addLog(msg) {
+    const time = new Date().toLocaleTimeString([],{hour12:false});
+    const el = document.getElementById('log');
+    const d = document.createElement('div');
+    d.className = 'log-entry';
+    d.innerHTML = '<span class="log-time">'+time+'</span><span class="msg-sys">'+msg+'</span>';
+    el.prepend(d);
+    if (el.children.length > 50) el.removeChild(el.lastChild);
+  }
+
+  function setDevice(online, note) {
+    const row = document.getElementById('dev-jhula1');
+    const el  = document.getElementById('note-jhula1');
+    row.classList.toggle('online', online);
+    el.textContent = online ? (note || 'Online') : 'Offline';
+  }
+
+  function setButtonsEnabled(enabled) {
+    document.querySelectorAll('button').forEach(b => b.disabled = !enabled);
+  }
+
+  function connect() {
+    client = mqtt.connect(MQTT_WSS_URL, { username: MQTT_USER, password: MQTT_PASS });
+
+    client.on('connect', () => {
+      document.getElementById('connection-status').className = 'connected';
+      document.getElementById('status-text').textContent = 'Live';
+      setButtonsEnabled(true);
+      client.subscribe(STATUS_TOPIC);
+      addLog('Connected to broker');
+    });
+    client.on('message', (topic, payload) => {
+      if (topic === STATUS_TOPIC) {
+        const online = payload.toString() === 'online';
+        setDevice(online);
+        addLog('jhula1 ' + (online ? 'online' : 'offline'));
+      }
+    });
+    client.on('reconnect', () => { document.getElementById('status-text').textContent = 'Reconnecting...'; });
+    client.on('close', () => {
+      document.getElementById('connection-status').className = 'disconnected';
+      document.getElementById('status-text').textContent = 'Offline';
+      setDevice(false);
+      setButtonsEnabled(false);
+      addLog('Disconnected from broker');
+    });
+    client.on('error', (e) => addLog('Error: ' + e.message));
+  }
+
+  function sendCmd(d, active) {
+    if (!client || !client.connected) return;
+    client.publish(CMD_TOPIC[d], active ? CMD_PAYLOAD[d] : 'stop', { qos: 1 });
+  }
+
+  function startHold(d) {
+    sendCmd(d, true);
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = setInterval(() => sendCmd(d, true), HEARTBEAT_MS);
+  }
+  function stopHold(d) {
+    clearInterval(heartbeatTimer);
+    sendCmd(d, false);
+  }
+
+  function press(d) {
+    if (pressedState[d]) return;
+    pressedState[d] = true;
+    document.getElementById('btn-'+d)?.classList.add('is-pressed');
+    startHold(d);
+  }
+  function release(d) {
+    if (!pressedState[d]) return;
+    pressedState[d] = false;
+    document.getElementById('btn-'+d)?.classList.remove('is-pressed');
+    stopHold(d);
+  }
+
+  const keyMap = {'w':'0','W':'0','s':'1','S':'1','i':'2','I':'2','k':'3','K':'3'};
+  document.addEventListener('keydown', e => { if (e.repeat) return; const d=keyMap[e.key]; if (d!==undefined){e.preventDefault();press(Number(d));} });
+  document.addEventListener('keyup',   e => { const d=keyMap[e.key]; if (d!==undefined) release(Number(d)); });
+
+  // If the tab is hidden (phone locked, backgrounded), stop everything
+  // immediately rather than waiting on the ESP32's dead-man's-switch timeout.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { clearInterval(heartbeatTimer); [0,1,2,3].forEach(d => sendCmd(d, false)); }
+  });
+
+  connect();
+</script>
+</body>
+</html>

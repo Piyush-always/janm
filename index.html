@@ -193,19 +193,31 @@
     client.on('error', (e) => addLog('Error: ' + e.message));
   }
 
-  function sendCmd(d, active) {
-    if (!client || !client.connected) return;
-    client.publish(CMD_TOPIC[d], active ? CMD_PAYLOAD[d] : 'stop', { qos: 1 });
+  // verbose=true logs success too (initial press/release); heartbeat resends
+  // pass verbose=false so a long hold doesn't spam the log with repeats --
+  // failures always log regardless, since those matter most.
+  function sendCmd(d, active, verbose) {
+    const payload = active ? CMD_PAYLOAD[d] : 'stop';
+    if (!client || !client.connected) {
+      addLog(DIR[d] + ' ' + payload + ' -> FAILED: not connected');
+      return;
+    }
+    client.publish(CMD_TOPIC[d], payload, { qos: 1 }, (err) => {
+      if (err) addLog(DIR[d] + ' ' + payload + ' -> FAILED: ' + err.message);
+      else if (verbose) addLog(DIR[d] + ' ' + payload + ' -> acked by broker');
+    });
   }
 
   function startHold(d) {
-    sendCmd(d, true);
+    addLog(DIR[d] + ' pressed');
+    sendCmd(d, true, true);
     clearInterval(heartbeatTimer);
-    heartbeatTimer = setInterval(() => sendCmd(d, true), HEARTBEAT_MS);
+    heartbeatTimer = setInterval(() => sendCmd(d, true, false), HEARTBEAT_MS);
   }
   function stopHold(d) {
+    addLog(DIR[d] + ' released');
     clearInterval(heartbeatTimer);
-    sendCmd(d, false);
+    sendCmd(d, false, true);
   }
 
   function press(d) {
@@ -228,7 +240,7 @@
   // If the tab is hidden (phone locked, backgrounded), stop everything
   // immediately rather than waiting on the ESP32's dead-man's-switch timeout.
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { clearInterval(heartbeatTimer); [0,1,2,3].forEach(d => sendCmd(d, false)); }
+    if (document.hidden) { clearInterval(heartbeatTimer); [0,1,2,3].forEach(d => sendCmd(d, false, true)); }
   });
 
   connect();

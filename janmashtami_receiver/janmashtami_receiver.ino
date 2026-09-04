@@ -111,6 +111,7 @@ void setMotor(uint8_t motorIndex, Direction dir) {
 
   if (dir == DIR_STOP) {
     m.current = DIR_STOP;
+    Serial.print("[MOTOR] "); Serial.print(motorIndex + 1); Serial.println(" -> STOP (both relays off)");
     if (mqtt.connected()) mqtt.publish(STATE_TOPIC[motorIndex], "stop", true, 1);
     return;
   }
@@ -119,9 +120,11 @@ void setMotor(uint8_t motorIndex, Direction dir) {
 
   if (dir == DIR_FWD) {
     relayWrite(m.fwdPin, true);
+    Serial.print("[MOTOR] "); Serial.print(motorIndex + 1); Serial.println(" -> FWD (up)");
     if (mqtt.connected()) mqtt.publish(STATE_TOPIC[motorIndex], "fwd", true, 1);
   } else {
     relayWrite(m.revPin, true);
+    Serial.print("[MOTOR] "); Serial.print(motorIndex + 1); Serial.println(" -> REV (down)");
     if (mqtt.connected()) mqtt.publish(STATE_TOPIC[motorIndex], "rev", true, 1);
   }
   m.current = dir;
@@ -151,6 +154,9 @@ body{font-family:sans-serif;text-align:center;background:#0b1b3a;color:#f4f1e8}
 button{width:92px;height:80px;font-size:20px;margin:8px;border-radius:14px;border:1px solid #24356b;background:#1a2f5c;color:#f4f1e8}
 button:active{background:#d4af37;color:#0b1b3a}
 h2{color:#d4af37}
+#log{margin:16px auto 0;max-width:340px;height:120px;overflow-y:auto;background:#0e1d40;border:1px solid #24356b;border-radius:10px;padding:8px 12px;text-align:left;font-family:monospace;font-size:0.72rem}
+#log div{padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
+.ok{color:#22c55e}.err{color:#ef4444}
 </style></head><body>
 <h2>Jhula Local Control</h2>
 <p>Direct on-site link -- no internet needed</p>
@@ -158,11 +164,25 @@ h2{color:#d4af37}
 <div><button data-m="1" data-d="fwd">M1 UP</button><br><button data-m="1" data-d="rev">M1 DOWN</button></div>
 <div><button data-m="2" data-d="fwd">M2 UP</button><br><button data-m="2" data-d="rev">M2 DOWN</button></div>
 </div>
+<div id="log"></div>
 <script>
 let hb=null;
-function send(m,d){fetch('/cmd?m='+m+'&d='+d);}
-function start(m,d){send(m,d);clearInterval(hb);hb=setInterval(()=>send(m,d),250);}
-function stop(m){clearInterval(hb);send(m,'stop');}
+function log(msg, cls){
+  var el=document.getElementById('log');
+  var t=new Date().toLocaleTimeString([],{hour12:false});
+  var d=document.createElement('div');
+  d.className=cls||'';
+  d.textContent='['+t+'] '+msg;
+  el.prepend(d);
+  while (el.children.length>40) el.removeChild(el.lastChild);
+}
+function send(m,d){
+  fetch('/cmd?m='+m+'&d='+d)
+    .then(r=>{ if(r.ok) log('M'+m+' '+d+' -> ok','ok'); else log('M'+m+' '+d+' -> HTTP '+r.status,'err'); })
+    .catch(e=>log('M'+m+' '+d+' -> FAILED: '+e.message,'err'));
+}
+function start(m,d){log('M'+m+' '+d+' pressed'); send(m,d);clearInterval(hb);hb=setInterval(()=>send(m,d),250);}
+function stop(m){log('M'+m+' released'); clearInterval(hb);send(m,'stop');}
 document.querySelectorAll('button').forEach(function(b){
   var m=b.dataset.m, d=b.dataset.d;
   b.addEventListener('mousedown', e=>{e.preventDefault();start(m,d);});
@@ -172,6 +192,7 @@ document.querySelectorAll('button').forEach(function(b){
   b.addEventListener('touchend', e=>{e.preventDefault();stop(m);});
   b.addEventListener('touchcancel', e=>{e.preventDefault();stop(m);});
 });
+log('Loaded. Press a button to test.');
 </script></body></html>
 )HTML";
 
@@ -181,13 +202,17 @@ void handleLocalRoot() {
 
 void handleLocalCmd() {
   if (!server.hasArg("m") || !server.hasArg("d")) {
+    Serial.println("[LOCAL] rejected: missing m/d");
     server.send(400, "text/plain", "missing m/d"); return;
   }
   int motorIndex = server.arg("m").toInt() - 1;
+  String d = server.arg("d");
   if (motorIndex != 0 && motorIndex != 1) {
+    Serial.print("[LOCAL] rejected: bad motor index "); Serial.println(motorIndex + 1);
     server.send(400, "text/plain", "bad m"); return;
   }
-  applyCommand((uint8_t)motorIndex, server.arg("d"));
+  Serial.print("[LOCAL] received m="); Serial.print(motorIndex + 1); Serial.print(" d="); Serial.println(d);
+  applyCommand((uint8_t)motorIndex, d);
   server.send(200, "text/plain", "ok");
 }
 
@@ -198,14 +223,21 @@ void mqttMessageReceived(String &topic, String &payload) {
   for (int i = 0; i < 2; i++) {
     if (topic == CMD_TOPIC[i]) { motorIndex = i; break; }
   }
-  if (motorIndex < 0) return;
+  if (motorIndex < 0) {
+    Serial.print("[MQTT] ignored unknown topic: "); Serial.println(topic);
+    return;
+  }
+  Serial.print("[MQTT] received m="); Serial.print(motorIndex + 1); Serial.print(" d="); Serial.println(payload);
   applyCommand((uint8_t)motorIndex, payload);
 }
 
 void mqttConnect() {
   mqtt.setWill(STATUS_TOPIC, "offline", true, 1);
   while (!mqtt.connect(MQTT_CLIENT_ID, MQTT_USER, MQTT_PASS)) {
-    Serial.print("MQTT connect failed, retrying...");
+    Serial.print("MQTT connect failed, lastError=");
+    Serial.print((int)mqtt.lastError());
+    Serial.print(" returnCode=");
+    Serial.println((int)mqtt.returnCode());
     esp_task_wdt_reset(); // avoid a watchdog reset during a slow broker retry
     delay(2000);
   }
@@ -238,10 +270,13 @@ void setup() {
   Serial.print("RSSI: "); Serial.println(WiFi.RSSI());
 
   if (MDNS.begin(MDNS_NAME)) {
-    Serial.print("Local control: http://"); Serial.print(MDNS_NAME); Serial.println(".local/");
+    Serial.print("Local control (try this first): http://"); Serial.print(MDNS_NAME); Serial.println(".local/");
   } else {
-    Serial.println("mDNS failed to start -- use the IP address above instead");
+    Serial.println("mDNS failed to start");
   }
+  // .local hostnames are unreliable on many Android browsers -- this IP
+  // works everywhere regardless of mDNS support.
+  Serial.print("Local control (always works): http://"); Serial.print(WiFi.localIP()); Serial.println("/");
 
   server.on("/", handleLocalRoot);
   server.on("/cmd", handleLocalCmd);
@@ -254,9 +289,19 @@ void setup() {
 
   mqtt.begin(MQTT_HOST, MQTT_PORT, net);
   mqtt.onMessage(mqttMessageReceived);
+  // Default socket timeout in this library is short enough that a slow TLS
+  // round-trip to a cloud broker can look like a dead connection and get
+  // dropped right after connecting. keepAlive=60s, cleanSession=true,
+  // socket timeout=5000ms.
+  mqtt.setOptions(60, true, 5000);
   mqttConnect();
 
-  esp_task_wdt_init(WDT_TIMEOUT_S, true); // true = reboot on timeout
+  esp_task_wdt_config_t wdt_config = {
+    .timeout_ms = WDT_TIMEOUT_S * 1000,
+    .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
+    .trigger_panic = true
+  };
+  esp_task_wdt_init(&wdt_config);
   esp_task_wdt_add(NULL);
 }
 
@@ -265,18 +310,23 @@ void loop() {
 
   server.handleClient();
   mqtt.loop();
-  if (!mqtt.connected()) mqttConnect();
+  if (!mqtt.connected()) {
+    Serial.println("[MQTT] disconnected, reconnecting...");
+    mqttConnect();
+  }
 
   // Dead-man's switch: auto-stop any motor whose last "fwd"/"rev" command
   // (from either the local page or MQTT) wasn't refreshed in time.
   unsigned long now = millis();
   for (uint8_t i = 0; i < 2; i++) {
     if (motors[i].current != DIR_STOP && (now - motors[i].lastCmdMillis) > CMD_TIMEOUT_MS) {
+      Serial.print("[SAFETY] motor "); Serial.print(i + 1); Serial.println(" dead-man's switch timeout -> auto-stop");
       setMotor(i, DIR_STOP);
     }
   }
 
   if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[SAFETY] WiFi lost -> auto-stop both motors");
     setMotor(0, DIR_STOP);
     setMotor(1, DIR_STOP);
   }

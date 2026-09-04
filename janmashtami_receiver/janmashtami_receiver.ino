@@ -301,8 +301,16 @@ void setup() {
     .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
     .trigger_panic = true
   };
-  esp_task_wdt_init(&wdt_config);
-  esp_task_wdt_add(NULL);
+  // Recent ESP32 Arduino cores auto-initialize the task watchdog for the
+  // main loop at boot with their own default timeout. Re-initializing it
+  // fails (ESP_ERR_INVALID_STATE) -- reconfigure the existing one instead
+  // so our WDT_TIMEOUT_S actually takes effect.
+  if (esp_task_wdt_init(&wdt_config) == ESP_ERR_INVALID_STATE) {
+    esp_task_wdt_reconfigure(&wdt_config);
+  }
+  if (esp_task_wdt_status(NULL) != ESP_OK) {
+    esp_task_wdt_add(NULL); // only subscribe if not already subscribed
+  }
 }
 
 void loop() {

@@ -137,12 +137,9 @@
   const CMD_TOPIC   = { 0: 'janmashtami/motor1/cmd', 1: 'janmashtami/motor1/cmd', 2: 'janmashtami/motor2/cmd', 3: 'janmashtami/motor2/cmd' };
   const CMD_PAYLOAD = { 0: 'fwd', 1: 'rev', 2: 'fwd', 3: 'rev' };
   const STATUS_TOPIC = 'janmashtami/jhula1/status';
-  // Must be well under the ESP32's CMD_TIMEOUT_MS (800ms) dead-man's switch.
-  const HEARTBEAT_MS = 250;
 
   let client;
   const pressedState = {};
-  let heartbeatTimer = null;
 
   function addLog(msg) {
     const time = new Date().toLocaleTimeString([],{hour12:false});
@@ -193,10 +190,12 @@
     client.on('error', (e) => addLog('Error: ' + e.message));
   }
 
-  // verbose=true logs success too (initial press/release); heartbeat resends
-  // pass verbose=false so a long hold doesn't spam the log with repeats --
-  // failures always log regardless, since those matter most.
-  function sendCmd(d, active, verbose) {
+  // One message per edge -- "on" once when pressed, "off" once when
+  // released. No repeated stream, so independent buttons (e.g. motor 1 up
+  // + motor 2 down together) no longer share any state and can't interfere
+  // with each other. The ESP32 backstops a lost "stop" with its own
+  // max-run-time cap instead of relying on a heartbeat refresh.
+  function sendCmd(d, active) {
     const payload = active ? CMD_PAYLOAD[d] : 'stop';
     if (!client || !client.connected) {
       addLog(DIR[d] + ' ' + payload + ' -> FAILED: not connected');
@@ -204,33 +203,23 @@
     }
     client.publish(CMD_TOPIC[d], payload, { qos: 1 }, (err) => {
       if (err) addLog(DIR[d] + ' ' + payload + ' -> FAILED: ' + err.message);
-      else if (verbose) addLog(DIR[d] + ' ' + payload + ' -> acked by broker');
+      else addLog(DIR[d] + ' ' + payload + ' -> acked by broker');
     });
-  }
-
-  function startHold(d) {
-    addLog(DIR[d] + ' pressed');
-    sendCmd(d, true, true);
-    clearInterval(heartbeatTimer);
-    heartbeatTimer = setInterval(() => sendCmd(d, true, false), HEARTBEAT_MS);
-  }
-  function stopHold(d) {
-    addLog(DIR[d] + ' released');
-    clearInterval(heartbeatTimer);
-    sendCmd(d, false, true);
   }
 
   function press(d) {
     if (pressedState[d]) return;
     pressedState[d] = true;
     document.getElementById('btn-'+d)?.classList.add('is-pressed');
-    startHold(d);
+    addLog(DIR[d] + ' pressed');
+    sendCmd(d, true);
   }
   function release(d) {
     if (!pressedState[d]) return;
     pressedState[d] = false;
     document.getElementById('btn-'+d)?.classList.remove('is-pressed');
-    stopHold(d);
+    addLog(DIR[d] + ' released');
+    sendCmd(d, false);
   }
 
   const keyMap = {'w':'0','W':'0','s':'1','S':'1','i':'2','I':'2','k':'3','K':'3'};
@@ -238,9 +227,9 @@
   document.addEventListener('keyup',   e => { const d=keyMap[e.key]; if (d!==undefined) release(Number(d)); });
 
   // If the tab is hidden (phone locked, backgrounded), stop everything
-  // immediately rather than waiting on the ESP32's dead-man's-switch timeout.
+  // immediately rather than relying on the ESP32's max-run-time cap alone.
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { clearInterval(heartbeatTimer); [0,1,2,3].forEach(d => sendCmd(d, false, true)); }
+    if (document.hidden) { [0,1,2,3].forEach(d => { pressedState[d] = false; sendCmd(d, false); }); }
   });
 
   connect();

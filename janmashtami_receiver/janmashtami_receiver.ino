@@ -55,12 +55,12 @@ const uint8_t MOTOR2_REV_PIN = 26; // relay 2 -> motor 2 down
 // energizes. Conservative margin pending your relay's datasheet release time.
 const uint16_t RELAY_DEADTIME_MS = 300;
 
-// Dead-man's switch: whichever page sent "fwd"/"rev" must keep re-sending it
-// at least this often while the button is held (both local and MQTT pages do
-// this). If no refresh arrives in time, the motor auto-stops. This is what
-// actually guarantees the motor stops on a dropped connection -- independent
-// of MQTT's LWT, which only informs the *website* that the device went dark.
-const uint16_t CMD_TIMEOUT_MS = 800;
+// Safety backstop, not a normal operating limit: pages send one "fwd"/"rev"
+// on press and one "stop" on release -- no repeated stream. If a "stop" is
+// ever lost (dropped packet, crashed tab, phone loses signal mid-hold), this
+// caps how long a motor can run unattended before auto-stopping anyway.
+// Set comfortably above your longest legitimate single press.
+const uint32_t MAX_RUN_MS = 15000;
 
 // Hardware watchdog: if loop() doesn't come back around within this many
 // seconds (firmware hang), the chip force-reboots. Relays default OFF at
@@ -76,7 +76,7 @@ struct Motor {
   uint8_t fwdPin;
   uint8_t revPin;
   Direction current;
-  unsigned long lastCmdMillis;
+  unsigned long startMillis; // when the current FWD/REV run began
 };
 
 Motor motors[2] = {
@@ -128,15 +128,13 @@ void setMotor(uint8_t motorIndex, Direction dir) {
     if (mqtt.connected()) mqtt.publish(STATE_TOPIC[motorIndex], "rev", true, 1);
   }
   m.current = dir;
-  m.lastCmdMillis = millis();
+  m.startMillis = millis();
 }
 
 void applyCommand(uint8_t motorIndex, const String& cmd) {
   if (cmd == "fwd") {
-    motors[motorIndex].lastCmdMillis = millis();
     if (motors[motorIndex].current != DIR_FWD) setMotor(motorIndex, DIR_FWD);
   } else if (cmd == "rev") {
-    motors[motorIndex].lastCmdMillis = millis();
     if (motors[motorIndex].current != DIR_REV) setMotor(motorIndex, DIR_REV);
   } else if (cmd == "stop") {
     setMotor(motorIndex, DIR_STOP);
@@ -166,7 +164,6 @@ h2{color:#d4af37}
 </div>
 <div id="log"></div>
 <script>
-let hb=null;
 function log(msg, cls){
   var el=document.getElementById('log');
   var t=new Date().toLocaleTimeString([],{hour12:false});
@@ -181,16 +178,19 @@ function send(m,d){
     .then(r=>{ if(r.ok) log('M'+m+' '+d+' -> ok','ok'); else log('M'+m+' '+d+' -> HTTP '+r.status,'err'); })
     .catch(e=>log('M'+m+' '+d+' -> FAILED: '+e.message,'err'));
 }
-function start(m,d){log('M'+m+' '+d+' pressed'); send(m,d);clearInterval(hb);hb=setInterval(()=>send(m,d),250);}
-function stop(m){log('M'+m+' released'); clearInterval(hb);send(m,'stop');}
+// One message per edge -- on press and on release, no repeated stream. This
+// also means independent buttons (e.g. motor 1 + motor 2 together) no
+// longer share any timer state and can't interfere with each other.
+function start(m,d){log('M'+m+' '+d+' pressed'); send(m,d);}
+function stop(m,d){log('M'+m+' '+d+' released'); send(m,'stop');}
 document.querySelectorAll('button').forEach(function(b){
   var m=b.dataset.m, d=b.dataset.d;
   b.addEventListener('mousedown', e=>{e.preventDefault();start(m,d);});
   b.addEventListener('touchstart', e=>{e.preventDefault();start(m,d);});
-  b.addEventListener('mouseup', e=>{e.preventDefault();stop(m);});
-  b.addEventListener('mouseleave', e=>{e.preventDefault();stop(m);});
-  b.addEventListener('touchend', e=>{e.preventDefault();stop(m);});
-  b.addEventListener('touchcancel', e=>{e.preventDefault();stop(m);});
+  b.addEventListener('mouseup', e=>{e.preventDefault();stop(m,d);});
+  b.addEventListener('mouseleave', e=>{e.preventDefault();stop(m,d);});
+  b.addEventListener('touchend', e=>{e.preventDefault();stop(m,d);});
+  b.addEventListener('touchcancel', e=>{e.preventDefault();stop(m,d);});
 });
 log('Loaded. Press a button to test.');
 </script></body></html>
@@ -323,12 +323,12 @@ void loop() {
     mqttConnect();
   }
 
-  // Dead-man's switch: auto-stop any motor whose last "fwd"/"rev" command
-  // (from either the local page or MQTT) wasn't refreshed in time.
+  // Safety backstop: auto-stop any motor that's been running continuously
+  // longer than MAX_RUN_MS, in case a "stop" message was ever lost.
   unsigned long now = millis();
   for (uint8_t i = 0; i < 2; i++) {
-    if (motors[i].current != DIR_STOP && (now - motors[i].lastCmdMillis) > CMD_TIMEOUT_MS) {
-      Serial.print("[SAFETY] motor "); Serial.print(i + 1); Serial.println(" dead-man's switch timeout -> auto-stop");
+    if (motors[i].current != DIR_STOP && (now - motors[i].startMillis) > MAX_RUN_MS) {
+      Serial.print("[SAFETY] motor "); Serial.print(i + 1); Serial.println(" exceeded max run time -> auto-stop");
       setMotor(i, DIR_STOP);
     }
   }
